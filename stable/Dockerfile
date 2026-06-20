@@ -3,6 +3,10 @@ FROM alpine:latest
 ENV NGINX_VERSION=1.30.1
 ENV LIBRESSL_VERSION=4.3.2
 
+ARG TARGETARCH=unknown
+ARG TARGETVARIANT=
+ARG TARGETOS=unknown
+
 # -----------------------------------------------------------------------------
 # Build flags -- kept as ENV so they are visible in `docker inspect`
 # -----------------------------------------------------------------------------
@@ -59,6 +63,11 @@ ENV CONFIG="\
 "
 
 RUN set -eux \
+    && LIBRESSL_HOST= \
+    && case "${TARGETARCH:-}-${TARGETVARIANT:-}" in \
+         arm-v6) LIBRESSL_HOST=armv6-alpine-linux-musleabihf ;; \
+         arm-v7) LIBRESSL_HOST=armv7-alpine-linux-musleabihf ;; \
+       esac \
     \
     # -- System user -----------------------------------------------------------
     && addgroup -S nginx \
@@ -164,6 +173,7 @@ RUN set -eux \
     \
     # -- Release build & install -----------------------------------------------
     && ./configure ${CONFIG} \
+        ${LIBRESSL_HOST:+--with-openssl-opt="--host=$LIBRESSL_HOST"} \
         --with-cc-opt="-flto -fno-fat-lto-objects" \
         --with-ld-opt="-flto" \
     && make -j"$(getconf _NPROCESSORS_ONLN)" \
@@ -175,6 +185,7 @@ RUN set -eux \
     # ends up compiled without -g and -DNGINX_DEBUG flags.
     && make clean \
     && ./configure ${CONFIG} --with-debug \
+        ${LIBRESSL_HOST:+--with-openssl-opt="--host=$LIBRESSL_HOST"} \
         --with-cc-opt="-flto -fno-fat-lto-objects" \
         --with-ld-opt="-flto" \
     && make -j"$(getconf _NPROCESSORS_ONLN)" \
@@ -238,9 +249,6 @@ RUN set -eux \
 # -----------------------------------------------------------------------------
 COPY nginx.conf               /etc/nginx/nginx.conf
 COPY nginx.vh.no-default.conf /etc/nginx/conf.d/default.conf
-
-ARG TARGETARCH=unknown
-ARG TARGETOS=unknown
 
 LABEL org.opencontainers.image.title="FreeNGINX with LibreSSL" \
       org.opencontainers.image.description="FreeNGINX ${NGINX_VERSION} built on Alpine with LibreSSL" \
